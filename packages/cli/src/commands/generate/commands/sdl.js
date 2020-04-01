@@ -29,7 +29,7 @@ const querySDL = (model) => {
 const inputSDL = (model, types = {}) => {
   return model.fields
     .filter((field) => {
-      return IGNORE_FIELDS.indexOf(field.name) === -1
+      return field.kind === 'scalar' && IGNORE_FIELDS.indexOf(field.name) === -1
     })
     .map((field) => modelFieldToSDL(field, false, types))
 }
