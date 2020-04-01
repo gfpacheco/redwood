@@ -6,22 +6,26 @@ import {
   createYargsForComponentGeneration,
 } from '../helpers'
 
-export const files = async ({ name, ...rest }) => {
+export const files = async ({ name, model, ...rest }) => {
   const componentName = camelcase(pluralize(name))
+  const relationFields = model.fields
+    .filter((field) => field.kind === 'object')
+    .map((field) => field.name)
+  const templateVars = { relationFields, ...rest }
   const serviceFile = templateForComponentFile({
     name,
-    componentName: componentName,
+    componentName,
     apiPathSection: 'services',
     templatePath: 'service/service.js.template',
-    templateVars: { ...rest },
+    templateVars,
   })
   const testFile = templateForComponentFile({
     name,
-    componentName: componentName,
+    componentName,
     extension: '.test.js',
     apiPathSection: 'services',
     templatePath: 'service/test.js.template',
-    templateVars: { ...rest },
+    templateVars,
   })
 
   // Returns

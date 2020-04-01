@@ -42,38 +42,28 @@ const idType = (model) => {
   return idField.type
 }
 
-const sdlFromSchemaModel = async (name) => {
-  const model = await getSchema(name)
-
-  if (model) {
-    // get models for user-defined types referenced
-    const types = (
-      await Promise.all(
-        model.fields
-          .filter((field) => field.kind === 'object')
-          .map(async (field) => {
-            const model = await getSchema(field.type)
-            return model
-          })
-      )
-    ).reduce((acc, cur) => ({ ...acc, [cur.name]: cur }), {})
-
-    return {
-      query: querySDL(model).join('\n    '),
-      input: inputSDL(model, types).join('\n    '),
-      idType: idType(model),
-    }
-  } else {
-    throw new Error(
-      `"${name}" model not found, check if it exists in "./api/prisma/schema.prisma"`
+const sdlFromSchemaModel = async (model) => {
+  // get models for user-defined types referenced
+  const types = (
+    await Promise.all(
+      model.fields
+        .filter((field) => field.kind === 'object')
+        .map(async (field) => {
+          const model = await getSchema(field.type)
+          return model
+        })
     )
+  ).reduce((acc, cur) => ({ ...acc, [cur.name]: cur }), {})
+
+  return {
+    query: querySDL(model).join('\n    '),
+    input: inputSDL(model, types).join('\n    '),
+    idType: idType(model),
   }
 }
 
-export const files = async ({ name, crud }) => {
-  const { query, input, idType } = await sdlFromSchemaModel(
-    pascalcase(pluralize.singular(name))
-  )
+export const files = async ({ name, crud, model }) => {
+  const { query, input, idType } = await sdlFromSchemaModel(model)
 
   const template = generateTemplate(path.join('sdl', 'sdl.js.template'), {
     name,
@@ -90,6 +80,18 @@ export const files = async ({ name, crud }) => {
   return { [outputPath]: template }
 }
 
+export const modelFromName = async (name) => {
+  const model = await getSchema(pascalcase(pluralize.singular(name)))
+
+  if (model) {
+    return model
+  } else {
+    throw new Error(
+      `"${name}" model not found, check if it exists in "./api/prisma/schema.prisma"`
+    )
+  }
+}
+
 export const command = 'sdl <model>'
 export const desc = 'Generate a GraphQL schema and service object.'
 export const builder = {
@@ -98,20 +100,28 @@ export const builder = {
   force: { type: 'boolean', default: false },
 }
 // TODO: Add --dry-run command
-export const handler = async ({ model, crud, services, force }) => {
+export const handler = async ({ model: name, crud, services, force }) => {
+  let model
+
   const tasks = new Listr(
     [
       {
+        title: 'Parsing schema...',
+        task: async () => {
+          model = await modelFromName(name)
+        },
+      },
+      {
         title: 'Generating SDL files...',
         task: async () => {
-          const f = await files({ name: model, crud })
+          const f = await files({ name, crud, model })
           return writeFilesTask(f, { overwriteExisting: force })
         },
       },
       services && {
         title: 'Generating service files...',
         task: async () => {
-          const f = await serviceFiles({ name: model, crud })
+          const f = await serviceFiles({ name, crud, model })
           return writeFilesTask(f, { overwriteExisting: force })
         },
       },
